@@ -74,9 +74,8 @@ def random_camera(batch_size=1, min_elev=20.0, max_elev=75.0,
 	cameras = FoVPerspectiveCameras(device=device, R=R, T=T, fov=float(fov))
 	return cameras, int(image_size), int(image_size)
 
-def point_cloud_from_camera_view(datasets: list, percent_saved=0.50, show_first_cloud=False):
+def point_cloud_from_camera_view(models: list, percent_saved=0.50, show_first_cloud=False):
 
-	models = get_models_from_datasets(datasets)
 
 	if not models:
 		print("No models found")
@@ -97,7 +96,7 @@ def point_cloud_from_camera_view(datasets: list, percent_saved=0.50, show_first_
 	verts = (verts - verts_center) / scale
 	meshes = Meshes(verts=verts, faces=faces)
 
-	cameras, H, W = random_camera(batch_size=1, image_size=512)
+	cameras, H, W = random_camera(batch_size=1, image_size=512, device=device)
 	raster_settings = RasterizationSettings(
 		image_size=H,
 		blur_radius=0.0,
@@ -133,10 +132,7 @@ def point_cloud_from_camera_view(datasets: list, percent_saved=0.50, show_first_
 
 	# To simulate noisy real-world data taking up less memory, only take ~25% of the points
 	noise_mask = torch.rand(points.shape[0], device=device) < percent_saved
-
-	pcd = o3d.geometry.PointCloud()
-	pcd.points = o3d.utility.Vector3dVector(points[noise_mask])
-	o3d.io.write_point_cloud(Path(f"{dataset_dir}/partial_pointcloud.ply"), pcd)
+	pcu.save_mesh_v(f"{dataset_dir}/partial_pointcloud.ply", points[noise_mask].cpu().numpy())
 
 	end = time.time()
 
@@ -146,9 +142,8 @@ def point_cloud_from_camera_view(datasets: list, percent_saved=0.50, show_first_
 		o3d.visualization.draw_geometries([pcd])
 
 
-def point_cloud_from_mesh(datasets: list, percent_saved=0.90, n_points=200_000, points_at_once=1_000_000, show_first_cloud=False, normalise=True,
+def point_cloud_from_mesh(models: list, percent_saved=0.90, n_points=200_000, points_at_once=1_000_000, show_first_cloud=False, normalise=True,
 						  device="cpu", seed=42):
-	models = get_models_from_datasets(datasets)
 	model_path = Path(models[2])
 
 	gen = torch.Generator(device=device).manual_seed(seed)
@@ -223,13 +218,22 @@ def pcu_based_generation(datasets:list, n_points=200_000):
 	f_i, bc = pcu.sample_mesh_random(v_np, f_np, n_points)
 	v_sampled = pcu.interpolate_barycentric_coords(f_np, f_i, bc, v_np)
 	pcu.save_mesh_v(f"{dataset_dir}/partial_pointcloud_pcu.ply", v_sampled)
+	end = time.time()
+	print(f"Time elapsed: {end - start}")
 
+def sample_points_trimesh(models:list, n_points=200_000):
+	mesh = trimesh.load_mesh(models[2])
+	start = time.time()
+	points = mesh.sample(n_points)
+	pcu.save_mesh_v(f"{dataset_dir}/partial_pointcloud_pcu.ply", points)
 	end = time.time()
 	print(f"Time elapsed: {end - start}")
 
 if __name__ == '__main__':
 	#download_from_objaverse()
-	#point_cloud_gen_from_camera_view([OBJAVERSE], show_first_cloud=True, percent_saved=0.50)
+	#point_cloud_from_camera_view([OBJAVERSE], show_first_cloud=False, percent_saved=0.50)
 	number_sample = 200_000
-	point_cloud_from_mesh([OBJAVERSE], show_first_cloud=False, normalise=False, percent_saved=0.5, n_points=number_sample, points_at_once=50_000)
-	pcu_based_generation([OBJAVERSE], number_sample)
+	datasets = get_models_from_datasets([OBJAVERSE])
+	models_3d = get_models_from_datasets(datasets)
+	point_cloud_from_mesh(models_3d, show_first_cloud=False, normalise=False, percent_saved=0.5, n_points=number_sample, points_at_once=50_000)
+	pcu_based_generation(models_3d, number_sample)

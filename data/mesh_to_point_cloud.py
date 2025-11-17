@@ -1,14 +1,13 @@
 import glob
 import os
 import time
-
+import csv
 import point_cloud_utils as pcu
 import torch
 import numpy as np
 import trimesh
 import open3d as o3d
 from pathlib import Path
-
 from pytorch3d.structures import Meshes
 from pytorch3d.renderer import (
 	look_at_view_transform,
@@ -17,7 +16,7 @@ from pytorch3d.renderer import (
 	MeshRasterizer
 )
 
-import objaverse.xl as oxl
+from tqdm import tqdm
 
 OBJAVERSE = "objaverse"
 REDWOOD = "redwood"
@@ -30,38 +29,27 @@ original_datasets_dirs = {
 	GSO: "/.gso",
 }
 dataset_dir = working_dir + "/dataset"
-
-def download_from_objaverse():
-	objaverse_dir = working_dir + original_datasets_dirs[OBJAVERSE]
-	os.makedirs(objaverse_dir, exist_ok=True)
-	os.makedirs(dataset_dir, exist_ok=True)
-
-	annotations = oxl.get_alignment_annotations(download_dir=objaverse_dir)
-	#TODO: Scale up
-	sampled_df = annotations.groupby('source').apply(lambda x: x.sample(16)).reset_index(drop=True)
-	oxl.download_objects(download_dir=objaverse_dir, objects=sampled_df)
-
-def download_from_redwood():
-	#TODO
-	pass
-def download_from_gso():
-	#TODO
-	pass
-def download_from_datasets():
-	#TODO
-	pass
+RECURSIVE_FILE_PATHS = ("**/*.glb", "**/*.gltf", "**/*.obj", "**/*.ply", "**/*.stl")
 
 def get_models_from_datasets(datasets: list):
 	models = []
+	labels = dict()
 	for d in datasets:
 		if d not in original_datasets_dirs:
 			continue
+		if d == GSO:
+			with open(f"{working_dir}/{GSO}_labels.csv", encoding="utf-8") as f:
+				temp = {row["filename"]: row["label"] for row in csv.DictReader(f)}
+				labels.update(temp)
+
 		current_dir = working_dir + original_datasets_dirs[d]
 		file_patterns = [rf"{current_dir}/{suffix}" for suffix in
-						 ("**/*.glb", "**/*.gltf", "**/*.obj", "**/*.ply", "**/*.stl")]
+						 RECURSIVE_FILE_PATHS]
 		for pattern in file_patterns:
 			models += glob.glob(pattern, recursive=True)
-	return models
+	labels = {m: labels[os.path.basename(m)] for m in models if os.path.basename(m) in labels}
+
+	return labels
 
 def random_camera(batch_size=1, min_elev=20.0, max_elev=75.0,
 				  min_dist=1.5, max_dist=3.5, image_size=512, fov=60.0, device="cpu"):
@@ -74,7 +62,7 @@ def random_camera(batch_size=1, min_elev=20.0, max_elev=75.0,
 	cameras = FoVPerspectiveCameras(device=device, R=R, T=T, fov=float(fov))
 	return cameras, int(image_size), int(image_size)
 
-def point_cloud_from_camera_view(models: list, percent_saved=0.50, show_first_cloud=False):
+def point_cloud_from_camera_view(models: dict, percent_saved=0.50, show_first_cloud=False):
 
 
 	if not models:
@@ -139,10 +127,10 @@ def point_cloud_from_camera_view(models: list, percent_saved=0.50, show_first_cl
 	print(f"partial_pointcloud.ply: points = {len(points)})")
 	print(f"Time elapsed: {end - start}")
 	if show_first_cloud:
-		o3d.visualization.draw_geometries([pcd])
+		o3d.visualization.draw_geometries([points])
 
 
-def point_cloud_from_mesh(models: list, percent_saved=0.90, n_points=200_000, points_at_once=1_000_000, show_first_cloud=False, normalise=True,
+def point_cloud_from_mesh(models: dict, percent_saved=0.90, n_points=200_000, points_at_once=1_000_000, show_first_cloud=False, normalise=True,
 						  device="cpu", seed=42):
 	model_path = Path(models[2])
 
@@ -209,31 +197,50 @@ def point_cloud_from_mesh(models: list, percent_saved=0.90, n_points=200_000, po
 		o3d.visualization.draw_geometries([pcd])
 	print(f"Time elapsed: {end - start}")
 
-def pcu_based_generation(datasets:list, n_points=200_000):
-	models = get_models_from_datasets(datasets)
-	mesh = trimesh.load_mesh(models[2])
-	start = time.time()
-	v_np = mesh.vertices.astype(np.float32)
-	f_np = mesh.faces.astype(np.int64)
-	f_i, bc = pcu.sample_mesh_random(v_np, f_np, n_points)
-	v_sampled = pcu.interpolate_barycentric_coords(f_np, f_i, bc, v_np)
-	pcu.save_mesh_v(f"{dataset_dir}/partial_pointcloud_pcu.ply", v_sampled)
-	end = time.time()
-	print(f"Time elapsed: {end - start}")
+def pcu_based_generation(models:dict, n_points=2048, percentage_kept=0.66):
+	label_counter = {model: 1 for model in models.values()}
+	with tqdm(
+			total=len(models.items()), unit="Files", unit_scale=False, desc="Generating Point clouds", leave=True
+	) as pbar:
+		for model_path, label in models.items():
 
-def sample_points_trimesh(models:list, n_points=200_000):
-	mesh = trimesh.load_mesh(models[2])
-	start = time.time()
-	points = mesh.sample(n_points)
-	pcu.save_mesh_v(f"{dataset_dir}/partial_pointcloud_pcu.ply", points)
-	end = time.time()
-	print(f"Time elapsed: {end - start}")
+			mesh = trimesh.load_mesh(model_path)
+
+			v_np = mesh.vertices.astype(np.float32)
+			f_np = mesh.faces.astype(np.int64)
+			f_i, bc = pcu.sample_mesh_poisson_disk(v_np, f_np, n_points)
+			v_sampled = pcu.interpolate_barycentric_coords(f_np, f_i, bc, v_np)
+
+			noise_mask = torch.rand(v_sampled.shape[0], device="cpu") < percentage_kept
+
+			pcu.save_mesh_v(f"{dataset_dir}/{label}{label_counter[label]}.ply", v_sampled[noise_mask])
+			label_counter[label] += 1
+			pbar.update(1)
+
+def sample_points_trimesh(models:dict, n_points=2048, percentage_kept=0.66):
+
+	label_counter = {model: 1 for model in models.values()}
+	for model_path, label in models.items():
+		mesh = trimesh.load_mesh(model_path)
+		start = time.time()
+		points = mesh.sample(n_points)
+
+		noise_mask = torch.rand(points.shape[0], device="cpu") < percentage_kept
+		pcu.save_mesh_v(f"{dataset_dir}/{label}{label_counter[label]}.ply", points[noise_mask])
+
+		label_counter[label] += 1
+		end = time.time()
+		print(f"Time elapsed: {end - start}")
 
 if __name__ == '__main__':
 	#download_from_objaverse()
 	#point_cloud_from_camera_view([OBJAVERSE], show_first_cloud=False, percent_saved=0.50)
-	number_sample = 200_000
-	datasets = get_models_from_datasets([OBJAVERSE])
-	models_3d = get_models_from_datasets(datasets)
-	point_cloud_from_mesh(models_3d, show_first_cloud=False, normalise=False, percent_saved=0.5, n_points=number_sample, points_at_once=50_000)
+	number_sample = 2048
+	models_3d = get_models_from_datasets([GSO])
+	#point_cloud_from_mesh(models_3d, show_first_cloud=False, normalise=False, percent_saved=0.5, n_points=number_sample, points_at_once=50_000)
 	pcu_based_generation(models_3d, number_sample)
+	#unpack_gso()
+
+
+
+

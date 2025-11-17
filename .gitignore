@@ -210,3 +210,8 @@ __marimo__/
 */.gso
 */.redwood
 *.ply
+
+*/.objaverse
+*/.gso
+*/.redwood
+*.ply

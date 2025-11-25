@@ -1,6 +1,8 @@
 
 import zipfile
 import shutil
+
+import objaverse
 from tqdm import tqdm
 
 import os
@@ -8,23 +10,25 @@ from pathlib import Path
 
 import json,requests
 import csv
-
+import pandas as pd
 import objaverse.xl as oxl
 
 OBJAVERSE = "objaverse"
 REDWOOD = "redwood"
 GSO = "gso"
+SHAPENET = "shapenet"
 
 working_dir = os.path.dirname(os.path.realpath(__file__))
 original_datasets_dirs = {
     OBJAVERSE: "/.objaverse",
     REDWOOD: "/.redwood",
     GSO: "/.gso",
+    SHAPENET: "/.shapenet"
 }
 dataset_dir = working_dir + "/dataset"
 SUPPORTED_FILES = ("**/*.glb", "**/*.gltf", "**/*.obj", "**/*.ply", "**/*.stl")
 
-GSO_FILE_COUNT = 1046 # NOTE: Some are corrupted when downloading via the script...
+GSO_FILE_COUNT = 1046 # NOTE: Some will come corrupted when downloading via the script...
 
 
 def download_from_objaverse():
@@ -32,12 +36,40 @@ def download_from_objaverse():
     os.makedirs(objaverse_dir, exist_ok=True)
     os.makedirs(dataset_dir, exist_ok=True)
 
-    annotations = oxl.get_alignment_annotations(download_dir=objaverse_dir)
-    #TODO: Scale up
-    sampled_df = annotations.groupby('source').apply(lambda x: x.sample(16)).reset_index(drop=True)
-    oxl.download_objects(download_dir=objaverse_dir, objects=sampled_df)
+    objaverse_pp = pd.read_json("hf://datasets/cindyxl/ObjaversePlusPlus/annotated_800k.json").copy()
 
-def download_from_redwood():
+    quality_levels = [2, 3]
+    filtered_models = objaverse_pp[
+        ((objaverse_pp['style'] == 'realistic') | (objaverse_pp['style'] == 'scanned')) &
+        (objaverse_pp['score'].isin(quality_levels)
+         & (objaverse_pp['is_multi_object'] == "false")
+         & (objaverse_pp['is_scene'] == "false")
+         & (objaverse_pp['is_transparent'] == "false")
+         & (objaverse_pp['is_figure'] == "false")
+         )
+        ]
+
+    annotations = oxl.get_annotations()
+    temp = pd.DataFrame(objaverse.load_uids(), columns=["UID"]).merge(filtered_models, how="left", on="UID")
+
+    to_download = annotations[annotations.index.isin(filtered_models.index[:2])]
+
+
+
+    print(f"Downloading {len(to_download)} filtered models from Objaverse")
+
+    # Download filtered models
+    objects = oxl.download_objects(
+        objects=to_download,
+        download_dir=objaverse_dir,
+        download_processes=16,
+        save_repo_format=None,
+    )
+
+
+
+
+def download_from_shapenet():
     #TODO
     pass
 
@@ -71,7 +103,7 @@ def unpack_gso():
 
 def generate_template_label_file_gso():
     """
-    Helper function; won't be needed by end user, as the final label file will be provided
+    Helper function; won't be needed by the end user, as the final label file will be provided
     """
     gso_dir = Path(working_dir + "/.gso")
     models = [f for f in gso_dir.iterdir() if f.suffix.lower() == ".obj"]
@@ -85,14 +117,14 @@ def generate_template_label_file_gso():
 
 
 
-owner_name = "GoogleResearch"
-collection_name = "Scanned Objects by Google Research"
 
 def download_from_gso(unpack: bool = True):
     """
-    Based on the script provided by gazebo
+    Based on the script provided by Gazebo
     """
 
+    owner_name = "GoogleResearch"
+    collection_name = "Scanned Objects by Google Research"
     print("Downloading models from GSO Dataset")
 
     page = 1
@@ -134,7 +166,6 @@ def download_from_gso(unpack: bool = True):
             for model in models:
                 count += 1
                 model_name = model['name']
-                #print ('Downloading (%d) %s' % (count, model_name))
                 download = requests.get(download_url + model_name + '.zip', stream=True)
                 with open(f"{working_dir}/.gso/{model_name}.zip", 'wb') as fd:
                     for chunk in download.iter_content(chunk_size=1024*1024):
@@ -144,11 +175,18 @@ def download_from_gso(unpack: bool = True):
     if unpack:
         unpack_gso()
 
-def download_from_datasets():
-    #TODO
-    pass
+def download_from_datasets(datasets: list):
+    for d in datasets:
+        if d == GSO:
+            download_from_gso()
+            unpack_gso()
+            generate_template_label_file_gso()
+        elif d == OBJAVERSE:
+            pass
+        elif d == SHAPENET:
+            pass
+        else:
+            print(f"Dataset {d} isn't used by us")
 
 if __name__ == '__main__':
-    download_from_gso()
-    unpack_gso()
-    generate_template_label_file_gso()
+    download_from_objaverse()

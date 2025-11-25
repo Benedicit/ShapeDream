@@ -197,7 +197,7 @@ def point_cloud_from_mesh(models: dict, percent_saved=0.90, n_points=200_000, po
 		o3d.visualization.draw_geometries([pcd])
 	print(f"Time elapsed: {end - start}")
 
-def pcu_based_generation(models:dict, n_points=2048, percentage_kept=0.66):
+def pcu_based_generation(models:dict, n_points=2048, percentage_kept=0.5):
 	label_counter = {model: 1 for model in models.values()}
 	with tqdm(
 			total=len(models.items()), unit="Files", unit_scale=False, desc="Generating Point clouds", leave=True
@@ -211,26 +211,32 @@ def pcu_based_generation(models:dict, n_points=2048, percentage_kept=0.66):
 			f_i, bc = pcu.sample_mesh_poisson_disk(v_np, f_np, n_points)
 			v_sampled = pcu.interpolate_barycentric_coords(f_np, f_i, bc, v_np)
 
-			noise_mask = torch.rand(v_sampled.shape[0], device="cpu") < percentage_kept
 
-			pcu.save_mesh_v(f"{dataset_dir}/{label}{label_counter[label]}.ply", v_sampled[noise_mask])
+
+			x_coord_mask = v_sampled[:, 0] > -0.01
+			v_filtered = v_sampled[x_coord_mask]
+			noise_mask = np.random.random(v_filtered.shape[0]) < percentage_kept
+			v_kept = v_filtered[noise_mask]
+			pcu.save_mesh_v(f"{dataset_dir}/{label}{label_counter[label]}.ply", v_kept)
 			label_counter[label] += 1
 			pbar.update(1)
 
 def sample_points_trimesh(models:dict, n_points=2048, percentage_kept=0.66):
 
 	label_counter = {model: 1 for model in models.values()}
-	for model_path, label in models.items():
-		mesh = trimesh.load_mesh(model_path)
-		start = time.time()
-		points = mesh.sample(n_points)
+	with tqdm(
+			total=len(models.items()), unit="Files", unit_scale=False, desc="Generating Point clouds", leave=True
+	) as pbar:
+		for model_path, label in models.items():
 
-		noise_mask = torch.rand(points.shape[0], device="cpu") < percentage_kept
-		pcu.save_mesh_v(f"{dataset_dir}/{label}{label_counter[label]}.ply", points[noise_mask])
+			mesh = trimesh.load_mesh(model_path)
+			points = mesh.sample(n_points)
 
-		label_counter[label] += 1
-		end = time.time()
-		print(f"Time elapsed: {end - start}")
+			noise_mask = torch.rand(points.shape[0], device="cpu") < percentage_kept
+
+			pcu.save_mesh_v(f"{dataset_dir}/{label}{label_counter[label]}.ply", points[noise_mask])
+			label_counter[label] += 1
+			pbar.update(1)
 
 if __name__ == '__main__':
 	#download_from_objaverse()
@@ -239,6 +245,8 @@ if __name__ == '__main__':
 	models_3d = get_models_from_datasets([GSO])
 	#point_cloud_from_mesh(models_3d, show_first_cloud=False, normalise=False, percent_saved=0.5, n_points=number_sample, points_at_once=50_000)
 	pcu_based_generation(models_3d, number_sample)
+	#m = trimesh.load(working_dir + "/dataset/mug1.ply")
+	#m.show()
 	#unpack_gso()
 
 

@@ -214,4 +214,5 @@ __marimo__/
 */.objaverse
 */.gso
 */.redwood
+*/.shapenet
 *.ply

@@ -1,4 +1,3 @@
-
 import zipfile
 import shutil
 
@@ -8,10 +7,11 @@ from tqdm import tqdm
 import os
 from pathlib import Path
 
-import json,requests
+import json, requests
 import csv
 import pandas as pd
 import objaverse.xl as oxl
+from huggingface_hub import hf_hub_download
 
 OBJAVERSE = "objaverse"
 REDWOOD = "redwood"
@@ -28,7 +28,7 @@ original_datasets_dirs = {
 dataset_dir = working_dir + "/dataset"
 SUPPORTED_FILES = ("**/*.glb", "**/*.gltf", "**/*.obj", "**/*.ply", "**/*.stl")
 
-GSO_FILE_COUNT = 1046 # NOTE: Some will come corrupted when downloading via the script...
+GSO_FILE_COUNT = 1046  # NOTE: Some will come corrupted when downloading via the script...
 
 
 def download_from_objaverse():
@@ -51,12 +51,11 @@ def download_from_objaverse():
 
     annotations = oxl.get_annotations()
     temp = pd.DataFrame(objaverse.load_uids(), columns=["UID"]).merge(filtered_models, how="left", on="UID")
-
+    # TODO:
     to_download = annotations[annotations.index.isin(filtered_models.index[:2])]
 
-
-
     print(f"Downloading {len(to_download)} filtered models from Objaverse")
+
 
     # Download filtered models
     objects = oxl.download_objects(
@@ -66,13 +65,29 @@ def download_from_objaverse():
         save_repo_format=None,
     )
 
-
-
-
 def download_from_shapenet():
-    #TODO
-    pass
-
+    # TODO
+    REPO_ID = "ShapeNet/ShapeNetCore"
+    shapenet_dir = working_dir + "/.shapenet"  # Where to save data
+    HF_TOKEN = os.environ.get("HF_TOKEN")
+    with open(working_dir + "/shapenet_groups", "r") as f:
+        groups = f.readlines()
+        with tqdm(
+                total=len(groups), unit="Groups", unit_scale=True, desc="Downloading Shapenet Groups", leave=True
+        ) as pbar:
+            for group in groups:
+                file = f"{group.strip()}.zip"
+                zip_path = hf_hub_download(
+                    repo_id=REPO_ID,
+                    filename=file,
+                    repo_type="dataset",
+                    local_dir=shapenet_dir,
+                    token=HF_TOKEN
+                )
+                with zipfile.ZipFile(Path(zip_path), 'r') as zip_ref:
+                    zip_ref.extractall(shapenet_dir)
+                Path(zip_path).unlink()
+                pbar.update(1)
 
 
 def unpack_gso():
@@ -101,6 +116,7 @@ def unpack_gso():
             finally:
                 pbar.update(1)
 
+
 def generate_template_label_file_gso():
     """
     Helper function; won't be needed by the end user, as the final label file will be provided
@@ -116,8 +132,6 @@ def generate_template_label_file_gso():
             writer.writerow([model.name, "object"])
 
 
-
-
 def download_from_gso(unpack: bool = True):
     """
     Based on the script provided by Gazebo
@@ -131,13 +145,13 @@ def download_from_gso(unpack: bool = True):
     count = 0
 
     # The Fuel server URL.
-    base_url ='https://fuel.gazebosim.org/'
+    base_url = 'https://fuel.gazebosim.org/'
 
     # Fuel server version.
     fuel_version = '1.0'
 
     # Path to get the models in the collection
-    next_url = '/models?page={}&per_page=100&q=collections:{}'.format(page,collection_name)
+    next_url = '/models?page={}&per_page=100&q=collections:{}'.format(page, collection_name)
 
     # Path to download a single model in the collection
     download_url = base_url + fuel_version + '/{}/models/'.format(owner_name)
@@ -145,7 +159,7 @@ def download_from_gso(unpack: bool = True):
     with tqdm(
             total=GSO_FILE_COUNT, unit_scale=False, desc="GSO Models", leave=True
     ) as pbar:
-    # Iterate over the pages
+        # Iterate over the pages
         while True:
             url = base_url + fuel_version + next_url
 
@@ -168,12 +182,13 @@ def download_from_gso(unpack: bool = True):
                 model_name = model['name']
                 download = requests.get(download_url + model_name + '.zip', stream=True)
                 with open(f"{working_dir}/.gso/{model_name}.zip", 'wb') as fd:
-                    for chunk in download.iter_content(chunk_size=1024*1024):
+                    for chunk in download.iter_content(chunk_size=1024 * 1024):
                         fd.write(chunk)
                 pbar.update(1)
     print('Done.')
     if unpack:
         unpack_gso()
+
 
 def download_from_datasets(datasets: list):
     for d in datasets:
@@ -188,5 +203,6 @@ def download_from_datasets(datasets: list):
         else:
             print(f"Dataset {d} isn't used by us")
 
+
 if __name__ == '__main__':
-    download_from_objaverse()
+    download_from_shapenet()

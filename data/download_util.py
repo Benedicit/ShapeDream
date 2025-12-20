@@ -51,7 +51,7 @@ def download_from_objaverse():
 
     annotations = oxl.get_annotations()
     temp = pd.DataFrame(objaverse.load_uids(), columns=["UID"]).merge(filtered_models, how="left", on="UID")
-    # TODO:
+    # TODO: Make it work...
     to_download = annotations[annotations.index.isin(filtered_models.index[:2])]
 
     print(f"Downloading {len(to_download)} filtered models from Objaverse")
@@ -66,7 +66,6 @@ def download_from_objaverse():
     )
 
 def download_from_shapenet():
-    # TODO
     REPO_ID = "ShapeNet/ShapeNetCore"
     shapenet_dir = working_dir + "/.shapenet"  # Where to save data
     HF_TOKEN = os.environ.get("HF_TOKEN")

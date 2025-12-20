@@ -3,12 +3,12 @@ import os
 import time
 import csv
 import point_cloud_utils as pcu
-import torch
+from pathlib import Path
 import numpy as np
 import trimesh
 import torch
 from torch.utils.data import DataLoader, Subset
-from pytorch3d.datasets import ShapeNetCore
+from pytorch3d.datasets import (ShapeNetCore, collate_batched_meshes)
 
 from tqdm import tqdm
 
@@ -24,7 +24,8 @@ original_datasets_dirs = {
 	GSO: "/.gso",
 	SHAPENET: "/.shapenet"
 }
-dataset_dir = working_dir + "/dataset"
+dataset_dir_masked = working_dir + "/dataset_masked"
+dataset_dir_unmasked = working_dir + "/dataset"
 RECURSIVE_FILE_PATHS = ("**/*.glb", "**/*.gltf", "**/*.obj", "**/*.ply", "**/*.stl")
 
 def get_models_from_gso_objaverse(datasets: list):
@@ -48,9 +49,11 @@ def get_models_from_gso_objaverse(datasets: list):
 	labels = {m: labels[os.path.basename(m)] for m in models if os.path.basename(m) in labels}
 
 	return labels
-def sample_shapenet(number_samples=2048):
+def sample_shapenet(number_samples=2048, masking=True):
+	saving_dir = dataset_dir_masked if masking else dataset_dir_unmasked
 	shapenet_dir = working_dir + "/.shapenet"
 	dataset = ShapeNetCore(shapenet_dir, version=2, load_textures=True)
+
 
 	# 2. Filter indices: Get first 100 of each category
 	selected_indices = []
@@ -73,46 +76,63 @@ def sample_shapenet(number_samples=2048):
 		subset_dataset,
 		batch_size=1, # We don't need the batches
 		shuffle=False,
+		collate_fn=collate_batched_meshes,
 	)
-
 	label_counter = {}
+	csv_path = Path(working_dir + "/shapenet_label_to_mesh.csv")
 	with tqdm(
 			total=len(loader), unit="Point Clouds", unit_scale=False, desc="Generating Point clouds of ShapeNet objects",
 			leave=True
 	) as pbar:
-		for batch in loader:
-			label = batch["label"][0]
-			if label not in label_counter:
-				label_counter[label] = 1
-			else:
-				label_counter[label] += 1
-			v = batch["verts"][0].cpu().numpy()
-			f = batch["faces"][0].cpu().numpy()
-			v_kept = pcu_based_evenly_spaced_sampling(v, f, n_points=number_samples)
-			pcu.save_mesh_v(f"{dataset_dir}/shapenet_{label}{label_counter[label]}.ply", v_kept)
-			pbar.update(1)
+		with open(csv_path, "w", newline="") as csvfile:
+			writer = csv.writer(csvfile)
+			writer.writerow(["label", "filename"])
+			for batch in loader:
+				label = batch["label"][0]
+				model_id = batch["model_id"][0]
+				synset_id = batch["synset_id"][0]
+				model_path = os.path.join(shapenet_dir, synset_id, model_id) + "/models/model_normalized.obj"
+				if label not in label_counter:
+					label_counter[label] = 1
+				else:
+					label_counter[label] += 1
+				v = batch["verts"][0].cpu().numpy()
+				f = batch["faces"][0].cpu().numpy()
+
+				writer.writerow([f"shapenet_{label}{label_counter[label]}.ply", model_path])
+
+				v_kept = pcu_based_evenly_spaced_sampling(v, f, n_points=number_samples)
+				pcu.save_mesh_v(f"{saving_dir}/shapenet_{label}{label_counter[label]}.ply", v_kept)
+				pbar.update(1)
 
 
-def sample_gso_objaverse(number_samples=2048):
+def sample_gso_objaverse(number_samples=2048, masking=True):
+	saving_dir = dataset_dir_masked if masking else dataset_dir_unmasked
 	models = get_models_from_gso_objaverse([GSO])
 	label_counter = {model: 1 for model in models.values()}
+	csv_path = Path(working_dir + "/gso_label_to_mesh.csv")
 	with tqdm(
 			total=len(models.items()), unit="Files", unit_scale=False, desc="Generating Point clouds", leave=True
 	) as pbar:
-		for model_path, label in models.items():
-			mesh = trimesh.load_mesh(model_path)
+		with open(csv_path, "w", newline="") as csvfile:
+			writer = csv.writer(csvfile)
+			writer.writerow(["label", "filename"])
+			for model_path, label in models.items():
+				mesh = trimesh.load_mesh(model_path)
 
-			v_np = mesh.vertices.astype(np.float32)
-			f_np = mesh.faces.astype(np.int64)
-			v_kept = pcu_based_evenly_spaced_sampling(v_np, f_np, n_points=number_samples)
+				v_np = mesh.vertices.astype(np.float32)
+				f_np = mesh.faces.astype(np.int64)
 
-			pcu.save_mesh_v(f"{dataset_dir}/{label}{label_counter[label]}.ply", v_kept)
-			label_counter[label] += 1
-			pbar.update(1)
+				v_kept = pcu_based_evenly_spaced_sampling(v_np, f_np, n_points=number_samples, masking=masking)
+
+				pcu.save_mesh_v(f"{saving_dir}/{label}{label_counter[label]}.ply", v_kept)
+				writer.writerow([f"{label}{label_counter[label]}.ply", model_path])
+				label_counter[label] += 1
+				pbar.update(1)
 
 def pcu_based_evenly_spaced_sampling(v, f, n_points=2048, percentage_kept=0.66, masking: bool = True):
 
-			f_i, bc = pcu.sample_mesh_poisson_disk(v, f, n_points)
+			f_i, bc = pcu.sample_mesh_poisson_disk(v, f, n_points, random_seed=42)
 			v_sampled = pcu.interpolate_barycentric_coords(f, f_i, bc, v)
 
 			if masking:
@@ -137,7 +157,7 @@ def sample_points_trimesh(models:dict, n_points=2048, percentage_kept=0.66):
 
 			noise_mask = torch.rand(points.shape[0], device="cpu") < percentage_kept
 
-			pcu.save_mesh_v(f"{dataset_dir}/{label}{label_counter[label]}.ply", points[noise_mask])
+			pcu.save_mesh_v(f"{dataset_dir_masked}/{label}{label_counter[label]}.ply", points[noise_mask])
 			label_counter[label] += 1
 			pbar.update(1)
 

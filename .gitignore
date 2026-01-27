@@ -215,4 +215,5 @@ __marimo__/
 */.gso
 */.redwood
 */.shapenet
-*.ply
+*.png
+*.txt

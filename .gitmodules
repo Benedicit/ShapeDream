@@ -1,6 +1,3 @@
-[submodule "mvdream"]
-	path = mvdream
-	url = https://github.com/Benedicit/MVDream-finetuned.git
 [submodule "mvdream_2D"]
 	path = mvdream_2D
 	url = https://github.com/Benedicit/MVDream_2D_FineTuned.git

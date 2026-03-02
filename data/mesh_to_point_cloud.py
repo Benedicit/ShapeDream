@@ -8,11 +8,12 @@ import numpy as np
 import pytorch3d.structures
 import trimesh
 import torch
+from pytorch3d.io import load_objs_as_meshes
 from torch.utils.data import DataLoader, Subset
 from pytorch3d.datasets import (ShapeNetCore, collate_batched_meshes)
 from pytorch3d.structures import Meshes
 from tqdm import tqdm
-
+from mvdream_2D.scripts.trainer import get_mesh_from_pc
 OBJAVERSE = "objaverse"
 REDWOOD = "redwood"
 GSO = "gso"
@@ -30,7 +31,14 @@ dataset_dir_unmasked = working_dir + "/dataset"
 RECURSIVE_FILE_PATHS = ("**/*.glb", "**/*.gltf", "**/*.obj", "**/*.ply", "**/*.stl")
 generator = np.random.default_rng(42)
 
-
+def sample_pointcloud_list(pointclouds:list, number_samples=2048, percentage_kept=0.66, masking=False):
+	for pc in pointclouds:
+		mesh_path = get_mesh_from_pc(pc)
+		mesh = load_objs_as_meshes([mesh_path], load_textures=False)
+		verts = mesh.verts_packed().cpu().numpy()
+		faces = mesh.faces_packed().cpu().numpy()
+		v_kept = pcu_based_evenly_spaced_sampling(verts, faces, n_points=number_samples, percentage_kept=percentage_kept, masking=masking)
+		pcu.save_mesh_v(f"{dataset_dir_unmasked}/shapenet_chair1500.ply", v_kept)
 def shapenet_collate_fn(batch):
 	"""
 	    Custom collate function to handle ShapeNetCore data:
@@ -171,7 +179,7 @@ def sample_gso_objaverse(number_samples=2048, masking=True):
 def pcu_based_evenly_spaced_sampling(v, f, n_points=2048, percentage_kept=1.0, masking: bool = True, data_augmentation = True):
 
 
-			f_i, bc = pcu.sample_mesh_poisson_disk(v, f, n_points, random_seed=42) if not masking else pcu.sample_mesh_random(v,f,n_points,random_seed=42)
+			f_i, bc = pcu.sample_mesh_poisson_disk(v, f, n_points, radius=-0.01, random_seed=42) if not masking else pcu.sample_mesh_random(v,f,n_points,random_seed=42)
 			v_sampled = pcu.interpolate_barycentric_coords(f, f_i, bc, v)
 
 			if masking:
@@ -213,8 +221,6 @@ def sample_points_trimesh(models:dict, n_points=2048, percentage_kept=0.66):
 if __name__ == '__main__':
 
 	#sample_gso_objaverse()
-	sample_shapenet()
-
-
-
+	#sample_shapenet(full_shapenet=False)
+	sample_pointcloud_list((["shapenet_chair1500.ply"]))
 

@@ -50,11 +50,12 @@ dependencies:
   - c-blosc2=2.12.0=hb4ffafa_0
   - ca-certificates=2025.11.4=h06a4308_0
   - cairo=1.16.0=ha61ee94_1012
-  - certifi=2025.10.5=py310h06a4308_0
+  - certifi=2025.11.12=py310h06a4308_0
   - cffi=2.0.0=py310h4eded50_1
   - cfitsio=4.1.0=hd9d235c_0
   - charls=2.3.4=h9c3ff4c_0
   - charset-normalizer=3.4.4=py310h06a4308_0
+  - cloudpickle=3.1.1=py310h06a4308_0
   - colorama=0.4.6=pyhd8ed1ab_1
   - contourpy=1.3.2=py310h3788b33_0
   - cuda-cccl=12.1.55=0
@@ -95,6 +96,8 @@ dependencies:
   - cuda-version=13.0=3
   - cuda-visual-tools=12.1.0=0
   - cycler=0.12.1=pyhd8ed1ab_1
+  - cytoolz=1.0.1=py310h5eee18b_0
+  - dask-core=2025.10.0=py310h06a4308_2
   - dataclasses=0.8=pyhc8e2a94_3
   - datasets=2.12.0=py310h06a4308_0
   - dateutils=0.6.12=py310h06a4308_0
@@ -124,6 +127,7 @@ dependencies:
   - fribidi=1.0.10=h7b6447c_0
   - frozenlist=1.8.0=py310hbdd6827_0
   - ftfy=6.3.1=py310h06a4308_0
+  - future=1.0.0=py310h06a4308_0
   - fvcore=0.1.5.post20221221=pyhd8ed1ab_0
   - gcc=12.4.0=h236703b_2
   - gcc_impl_linux-64=12.4.0=h26ba24d_2
@@ -157,7 +161,7 @@ dependencies:
   - icu=70.1=h27087fc_0
   - idna=3.11=py310h06a4308_0
   - imagecodecs=2022.9.26=py310h1689d63_0
-  - imageio=2.37.0=pyhfb79c49_0
+  - imageio=2.19.3=py310h06a4308_0
   - importlib-metadata=8.7.0=pyhe01879c_1
   - importlib_resources=6.5.2=py310h06a4308_0
   - inquirer=3.4.1=py310h06a4308_0
@@ -176,6 +180,7 @@ dependencies:
   - krb5=1.20.1=h81ceb04_0
   - lame=3.100=h7b6447c_0
   - lazy-loader=0.4=pyhd8ed1ab_2
+  - lazy_loader=0.4=py310h06a4308_0
   - lcms2=2.14=h6ed2654_0
   - ld_impl_linux-64=2.44=h153f514_2
   - lerc=4.0.0=h6a678d5_0
@@ -301,6 +306,7 @@ dependencies:
   - lightning-cloud=0.5.70=py310h06a4308_0
   - lightning-utilities=0.15.2=py310h06a4308_0
   - llvm-openmp=14.0.6=h9e868ea_0
+  - locket=1.0.0=py310h06a4308_0
   - lz4-c=1.9.4=h6a678d5_1
   - markdown=3.4.1=py310h06a4308_0
   - markdown-it-py=4.0.0=py310h06a4308_0
@@ -342,7 +348,9 @@ dependencies:
   - ordered-set=4.1.0=py310h06a4308_0
   - p11-kit=0.24.1=hc5aa10d_0
   - pandas=2.3.3=py310h23c847b_1
+  - partd=1.4.2=py310h06a4308_0
   - pcre2=10.46=hf426167_0
+  - peft=0.18.0=pyhcf101f3_0
   - pillow=10.4.0=py310h5eee18b_0
   - pip=25.2=pyhc872135_1
   - pixman=0.46.4=h7934f7d_0
@@ -358,6 +366,7 @@ dependencies:
   - pycparser=2.23=py310h06a4308_0
   - pydantic-core=2.33.2=py310hc6f7160_0
   - pydub=0.25.1=pyhd8ed1ab_1
+  - pyglet=1.5.27=py310hff52083_4
   - pygments=2.19.2=py310h06a4308_0
   - pyjwt=2.10.1=py310h06a4308_0
   - pyparsing=3.2.5=pyhcf101f3_0
@@ -395,7 +404,7 @@ dependencies:
   - s3transfer=0.14.0=py310h06a4308_0
   - safehttpx=0.1.7=pyhd8ed1ab_0
   - safetensors=0.6.2=py310hdfeec95_1
-  - scikit-image=0.25.2=py310h0158d43_2
+  - scikit-image=0.20.0=py310h6a678d5_0
   - scipy=1.15.2=py310h1d65ade_0
   - semantic_version=2.10.0=py310h06a4308_0
   - setuptools=80.9.0=py310h06a4308_0
@@ -420,6 +429,7 @@ dependencies:
   - tokenizers=0.22.1=py310h4b931ed_0
   - toml=0.10.2=pyhd8ed1ab_1
   - tomli=2.3.0=pyhcf101f3_0
+  - toolz=1.0.0=py310h06a4308_0
   - torchaudio=2.4.1=py310_cu121
   - torchmetrics=1.8.2=pyhd8ed1ab_0
   - torchtriton=3.0.0=py310
@@ -505,6 +515,7 @@ dependencies:
       - gputil==1.4.0
       - hf-xet==1.2.0
       - huggingface-hub==1.1.2
+      - imageio-ffmpeg==0.4.7
       - ipython==8.37.0
       - ipywidgets==8.1.8
       - jaxtyping==0.3.3
@@ -533,6 +544,7 @@ dependencies:
       - parso==0.8.5
       - pexpect==4.9.0
       - platformdirs==4.5.0
+      - plyfile==1.1.3
       - point-cloud-utils==0.34.0
       - prompt-toolkit==3.0.52
       - propcache==0.4.1

@@ -210,3 +210,14 @@ __marimo__/
 */.gso
 */.redwood
 *.ply
+*/.shapenet
+*/sampled_debug
+*.png
+*.txt
+
+/data/dataset
+/data/dataset_masked
+*label_to_mesh.csv
+/data/shape_eval_results.csv
+/mvdream_2D/debug
+/mvdream_2D/debug2

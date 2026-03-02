@@ -1,3 +1,6 @@
-[submodule "mvdream"]
-	path = mvdream
-	url = https://github.com/bytedance/MVDream-threestudio.git
+[submodule "mvdream_2D"]
+	path = mvdream_2D
+	url = https://github.com/Benedicit/MVDream_2D_FineTuned.git
+[submodule "snap_gtr"]
+	path = snap_gtr
+	url = https://github.com/snap-research/snap_gtr.git

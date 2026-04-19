@@ -84,7 +84,7 @@ if __name__ == "__main__":
     gt_map = {row[0]: row[1] for row in csv.reader(open( f"{working_dir}/shapenet_label_to_mesh.csv")) if row}
     #obj_names = [l.strip() for l in open("/home/bweiss/Benedikt/ShapeFormer/demo/dataset/demo.lst") if l.strip() and not l.startswith("#")]
     obj_names = []
-    for j in range(4200, 4500):
+    for j in range(4250, 4500):
         obj_names.append(f"chair{j}")
 
     for i, name in enumerate(tqdm(obj_names)):
@@ -111,17 +111,18 @@ if __name__ == "__main__":
         #if sf_res:
         #    results[f"{cls}_ShapeFormer"].append({k: np.mean([r[k] for r in sf_res]) for k in METRICS})
             
-        mv_p = f"{working_dir}/../mvdream_2D/debug/{name}/mesh.obj"
+        mv_p = f"{working_dir}/../mvdream_2D/scripts/debug/{name}/mesh.obj"
         if os.path.exists(mv_p):
             results[f"{cls}_ShapeDream"].append(evaluator.evaluate(mv_p, gt_p))
-        interleaved_p = f"{working_dir}/../mvdream_2D/debug2/{name}/mesh.obj"
+        interleaved_p = f"{working_dir}/../mvdream_2D/scripts/debug2/{name}/mesh.obj"
         
         if os.path.exists(interleaved_p):
-            results[f"{cls}_ShapeDreamInterLeaved"].append(evaluator.evaluate(interleaved_p, gt_p))
+            results[f"{cls}_ShapeDream_no_text"].append(evaluator.evaluate(interleaved_p, gt_p))
     # Print Summary
     for k, v in results.items():
         m = {met: np.mean([x[met] for x in v]) for met in METRICS}
         print(f"{k[:25]:<25} | n={len(v)} | " + " | ".join(f"{met}: {m[met]:.8f}" for met in METRICS))
+        print(k)
 
     out_csv = f"{working_dir}/shape_eval_results.csv"
 

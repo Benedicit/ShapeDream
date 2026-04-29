@@ -1,9 +1,14 @@
 import glob
 import os
+
+
+from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent.absolute()))
+
 import time
 import csv
 import point_cloud_utils as pcu
-from pathlib import Path
 import numpy as np
 import pytorch3d.structures
 import trimesh
@@ -13,7 +18,7 @@ from torch.utils.data import DataLoader, Subset
 from pytorch3d.datasets import (ShapeNetCore, collate_batched_meshes)
 from pytorch3d.structures import Meshes
 from tqdm import tqdm
-from mvdream_2D.scripts.trainer import get_mesh_from_pc
+from mvdream_2D.scripts.util import get_mesh_from_pc
 OBJAVERSE = "objaverse"
 REDWOOD = "redwood"
 GSO = "gso"
@@ -94,6 +99,35 @@ def get_models_from_gso_objaverse(datasets: list):
 	labels = {m: labels[os.path.basename(m)] for m in models if os.path.basename(m) in labels}
 
 	return labels
+
+def make_shapenet_lookup():
+	shapenet_dir = working_dir + "/.shapenet"
+
+	dataset = ShapeNetCore(shapenet_dir, version=2, load_textures=False)
+
+	label_counter = {}
+	csv_path = Path(working_dir + "/shapenet_label_to_mesh.csv")
+
+	with tqdm(
+			total=len(dataset), unit="Objects", unit_scale=False,
+			desc="Mapping labels to mesh files", leave=True
+	) as pbar:
+		with open(csv_path, "w", newline="") as csvfile:
+			writer = csv.writer(csvfile)
+			writer.writerow(["pc_id", "filename", "label"])
+
+			for synset_id, model_id in zip(dataset.synset_ids, dataset.model_ids):
+				label = dataset.synset_dict.get(synset_id, "unknown")
+
+				model_path = os.path.join(
+					shapenet_dir, synset_id, model_id, "models", "model_normalized.obj"
+				)
+
+				label_counter[label] = label_counter.get(label, 0) + 1
+				writer.writerow([f"shapenet_{label}{label_counter[label]}", model_path, label])
+				pbar.update(1)
+
+
 def sample_shapenet(number_samples=2048, masking=True, full_shapenet=True, samples_per_category=150):
 	saving_dir = dataset_dir_masked if masking else dataset_dir_unmasked
 	shapenet_dir = working_dir + "/.shapenet"
@@ -222,5 +256,6 @@ if __name__ == '__main__':
 
 	#sample_gso_objaverse()
 	#sample_shapenet(full_shapenet=False)
-	sample_pointcloud_list((["shapenet_chair1500.ply"]))
+	make_shapenet_lookup()
+	#sample_pointcloud_list((["shapenet_chair1500.ply"]))
 

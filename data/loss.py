@@ -8,10 +8,12 @@ import numpy as np
 from tqdm import tqdm
 import warnings
 from pytorch3d.io import load_objs_as_meshes, load_ply
-from pytorch3d.ops import knn_points, sample_points_from_meshes
+from pytorch3d.ops import knn_points, sample_points_from_meshes, iterative_closest_point
 from pytorch3d.loss import mesh_normal_consistency, mesh_laplacian_smoothing, chamfer_distance
 from collections import defaultdict
 from mvdream_2D.scripts.view_renderer import normalize_vertices
+from lightning import seed_everything
+from mvdream_2D.scripts.util import load_pcd_to_tensor
 
 warnings.filterwarnings("ignore")
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -27,17 +29,30 @@ class ShapeEvaluator:
         self.device, self.method = device, method
 
     @torch.no_grad()
-    def evaluate(self, p_path, g_path, num_points=16384, threshold=0.0001):
-        # load_objs_as_meshes expects a list of files/paths
-        g_mesh = load_objs_as_meshes(g_path, device=self.device, load_textures=False)
-        p_mesh = load_objs_as_meshes(p_path, device=self.device, load_textures=False)
-
+    def get_points(self, p_path, g_path, num_points=16384, adapointr=False):
+        g_mesh = load_objs_as_meshes([g_path], device=self.device, load_textures=False)
         # Sample surface points
         g_points = sample_points_from_meshes(g_mesh, num_points)
-        p_points = sample_points_from_meshes(p_mesh, num_points)
-
         g_points = normalize_vertices(g_points)
-        p_points = normalize_vertices(p_points)
+
+        if adapointr:
+            p_points = torch.from_numpy(np.load(p_path)).to(self.device)
+            p_points = p_points.unsqueeze(0)
+            p_points = normalize_vertices(p_points)
+            icp = iterative_closest_point(p_points, g_points)
+            p_points = icp.Xt
+
+        else:
+            p_mesh = load_objs_as_meshes([p_path], device=self.device, load_textures=False)
+            #g_points = load_pcd_to_tensor(g_path).to(self.device)
+            p_points = sample_points_from_meshes(p_mesh, num_points)
+            p_points = normalize_vertices(p_points)
+            icp = iterative_closest_point(p_points, g_points)
+            p_points = icp.Xt
+        return g_points, p_points
+
+    @torch.no_grad()
+    def evaluate(self, g_points, p_points, threshold=0.0001):
 
         # Chamfer distances
         cd_l1, _ = chamfer_distance(p_points, g_points, norm=1)
@@ -51,7 +66,7 @@ class ShapeEvaluator:
         d_p2g = knn_p2g.dists[..., 0]
         d_g2p = knn_g2p.dists[..., 0]
 
-        # NOTE: treshhold is 0.0001 by default which is the F1-score@1% as the knn_points are the squared distances
+        # NOTE: treshhold is 0.0001 by default, which is the F1-score@1% as the knn_points are the squared distances
         prec = (d_p2g < threshold).float().mean(dim=1)
         rec = (d_g2p < threshold).float().mean(dim=1)
         f_score = 2 * prec * rec / (prec + rec + 1e-8)
@@ -66,18 +81,20 @@ class ShapeEvaluator:
         }
 
 if __name__ == "__main__":
+    seed_everything(42)
     evaluator = ShapeEvaluator()
     results = defaultdict(list)
-    
+
     # Load paths
     gt_map = {row[0]: row[1] for row in csv.reader(open( f"{working_dir}/shapenet_label_to_mesh.csv")) if row}
     obj_names = []
+    """
     for j in range(4250, 4500):
         obj_names.append(f"chair{j}")
 
     for i, name in enumerate(tqdm(obj_names)):
         cls = re.match(r"^[A-Z a-z]+", name).group(0).lower()
-        gt_p_raw = gt_map.get(f"shapenet_{name}.ply")
+        gt_p_raw = gt_map.get(f"shapenet_{name}")
         
         if not gt_p_raw:
             continue
@@ -92,14 +109,34 @@ if __name__ == "__main__":
             print(f"Warning: File not found {gt_p}")
             continue
 
-        mv_p = f"{working_dir}/../mvdream_2D/scripts/debug/{name}/mesh.obj"
+        #mv_p = f"{working_dir}/../mvdream_2D/scripts/debug/{name}/mesh.obj"
+        mv_p = f"{working_dir}/adapointr_out/chair/{name}/fine.npy"
         if os.path.exists(mv_p):
-            results[f"{cls}_ShapeDream"].append(evaluator.evaluate([mv_p], [gt_p]))
-        interleaved_p = f"{working_dir}/../mvdream_2D/scripts/debug2/{name}/mesh.obj"
-        
-        if os.path.exists(interleaved_p):
-            results[f"{cls}_ShapeDream_no_text"].append(evaluator.evaluate([interleaved_p], [gt_p]))
+            g_pts, p_pts = evaluator.get_points(mv_p, gt_p, adapointr=True)
+            results["ShapeDream"].append(evaluator.evaluate(g_pts, p_pts))
+    """
+    base_path = f"/home/stud/weisb/ShapeDream/data/.pcn/ShapeNetCompletion/val/complete/03001627"
+    gt_paths = list(Path(base_path).glob("**/*.pcd"))
+    gt_paths = sorted(gt_paths)
+    progressbar = tqdm(gt_paths)
+    for p in gt_paths:
+        name = p.stem
+        mesh_path = (
+                Path(working_dir) / "../data" / ".shapenet"
+                / "03001627" / name
+                / "models" / "model_normalized.obj"
+        )
+        #mv_p = f"{working_dir}/../mvdream_2D/scripts/debug/{name}/mesh.obj"
+        mv_p = f"{working_dir}/adapointr_out/chair/{name}/fine.npy"
+        if os.path.exists(mv_p):
+            #g_pts_2 = load_pcd_to_tensor(p).to(evaluator.device).unsqueeze(0)
+            #g_pts_2 = normalize_vertices(g_pts_2)
 
+            #g_pts, p_pts= evaluator.get_points(mv_p, mesh_path, adapointr=False)
+            g_pts, p_pts= evaluator.get_points(mv_p, mesh_path, adapointr=True)
+
+            results["ShapeDream"].append(evaluator.evaluate(g_pts, p_pts))
+        progressbar.update(1)
     # Print Summary
     for k, v in results.items():
         m = {met: np.mean([x[met] for x in v]) for met in METRICS_PYTORCH}

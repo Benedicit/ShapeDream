@@ -10,13 +10,11 @@ import time
 import csv
 import point_cloud_utils as pcu
 import numpy as np
-import pytorch3d.structures
 import trimesh
 import torch
 from pytorch3d.io import load_objs_as_meshes
 from torch.utils.data import DataLoader, Subset
 from pytorch3d.datasets import (ShapeNetCore, collate_batched_meshes)
-from pytorch3d.structures import Meshes
 from tqdm import tqdm
 from mvdream_2D.scripts.util import get_mesh_from_pc
 OBJAVERSE = "objaverse"
